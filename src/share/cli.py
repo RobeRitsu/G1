@@ -6,6 +6,8 @@
 import argparse
 import sys
 
+from share.upload import add_upload_parser
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="share", description="Dropbox 共有リンク発行ツール")
@@ -13,6 +15,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # TODO(担当者): 各サブコマンドを追加し、set_defaults(func=...) でハンドラを紐づける
     # 例) sub.add_parser("auth", help="Dropbox 認証を行う").set_defaults(func=cmd_auth)
+    add_upload_parser(sub)  # アップロード（Nakatani）
 
     return parser
 
