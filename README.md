@@ -12,11 +12,22 @@ uv sync          # pyproject.toml / uv.lock 通りに環境を再現
 
 ## 使い方
 
+### 基本コマンド
+
 ```bash
-uv run share --help        # コマンドの確認
-uv run pytest              # ユニットテスト + カバレッジ
-uv run radon cc src -a     # 循環的複雑度
+# Dropbox にログイン
+uv run share auth
+
+# コマンド一覧の確認
+uv run share --help
+```
+
+### 品質チェック
+
+```bash
+uv run pytest              # テスト + カバレッジ
 uv run flake8 src          # 静的解析
+uv run radon cc src -a     # 複雑度チェック
 ```
 
 インストールすると `share` コマンドとして直接実行できる
@@ -31,7 +42,12 @@ share --help
 ```
 src/share/
 ├── __init__.py
-└── cli.py       # コマンドのエントリポイント（サブコマンドは担当者が実装）
+├── auth.py       # 認証（ログイン・ログアウト）
+├── cli.py        # コマンドの入り口
+├── client.py     # Dropbox 接続
+├── config.py     # 設定
+└── upload.py     # ファイルアップロード
+
 tests/           # ユニットテスト
 ```
 
