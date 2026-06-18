@@ -74,9 +74,62 @@ def test_parser_registers_upload_subcommand():
     assert args.func is cmd_upload
 
 
+def test_cmd_upload_not_authenticated():
+    """未認証時のテスト."""
+    import argparse
+    from unittest.mock import patch
+
+    with patch("share.client.get_client", return_value=None):
+        args = argparse.Namespace(
+            local_path="test.txt",
+            dropbox_path=None,
+            overwrite=False,
+        )
+        result = cmd_upload(args)
+        assert result == 1
+
+
 def test_parser_upload_defaults():
     parser = build_parser()
     args = parser.parse_args(["upload", "local.txt"])
 
     assert args.dropbox_path is None
     assert args.overwrite is False
+
+
+def test_cmd_upload_success():
+    """認証済みでアップロード成功."""
+    import argparse
+    from unittest.mock import MagicMock, patch
+
+    mock_metadata = MagicMock()
+    mock_metadata.path_display = "/uploaded.txt"
+
+    with patch("share.client.get_client", return_value=MagicMock()):
+        with patch("share.upload.upload_file", return_value=mock_metadata):
+            args = argparse.Namespace(
+                local_path="test.txt",
+                dropbox_path=None,
+                overwrite=False,
+            )
+            result = cmd_upload(args)
+            assert result == 0
+
+
+def test_cmd_upload_file_not_found():
+    """認証済みだがローカルファイルが存在しない."""
+    import argparse
+    from unittest.mock import MagicMock, patch
+
+    with patch("share.client.get_client", return_value=MagicMock()):
+        with patch(
+            "share.upload.upload_file",
+            side_effect=FileNotFoundError("ローカルファイルが見つかりません: test.txt"),
+        ):
+            args = argparse.Namespace(
+                local_path="test.txt",
+                dropbox_path=None,
+                overwrite=False,
+            )
+            result = cmd_upload(args)
+            assert result == 1
