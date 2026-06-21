@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-import os
+from pathlib import Path
 
 from dropbox.files import FileMetadata, WriteMode
 
@@ -29,15 +29,16 @@ def upload_file(dbx, local_path: str, dropbox_path: str | None = None,
     Raises:
         FileNotFoundError: ローカルファイルが存在しない場合。
     """
-    if not os.path.isfile(local_path):
+    local = Path(local_path)
+    if not local.is_file():
         raise FileNotFoundError(f"ローカルファイルが見つかりません: {local_path}")
 
     if dropbox_path is None:
-        dropbox_path = "/" + os.path.basename(local_path)
+        dropbox_path = "/" + local.name
 
     mode = WriteMode("overwrite") if overwrite else WriteMode("add")
 
-    with open(local_path, "rb") as f:
+    with local.open("rb") as f:
         return dbx.files_upload(f.read(), dropbox_path, mode=mode)
 
 
@@ -54,11 +55,20 @@ def add_upload_parser(subparsers) -> None:
 
 def cmd_upload(args) -> int:
     """``share upload`` のハンドラ."""
-    # TODO(結合): Tani の認証 IF が確定したら get_client() に差し替える。
-    from share.auth import get_client
+    from share.client import get_client
 
     dbx = get_client()
-    metadata = upload_file(dbx, args.local_path, args.dropbox_path,
-                           overwrite=args.overwrite)
+    if dbx is None:
+        print("エラー: 認証が必要です。")
+        print("'share auth' を実行してください。")
+        return 1
+
+    try:
+        metadata = upload_file(dbx, args.local_path, args.dropbox_path,
+                               overwrite=args.overwrite)
+    except FileNotFoundError as exc:
+        print(f"エラー: {exc}")
+        return 1
+
     print(f"アップロード完了: {metadata.path_display}")
     return 0
