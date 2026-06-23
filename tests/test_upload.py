@@ -133,3 +133,68 @@ def test_cmd_upload_file_not_found():
             )
             result = cmd_upload(args)
             assert result == 1
+
+
+def test_small_file_does_not_use_session(tmp_path, monkeypatch):
+    """CHUNK_SIZE 以下のファイルはセッションを使わず files_upload で送る."""
+    import share.upload as upload_mod
+
+    monkeypatch.setattr(upload_mod, "CHUNK_SIZE", 8)  # 8 バイト
+    local = tmp_path / "small.bin"
+    local.write_bytes(b"12345678")  # ちょうど 8 バイト（境界）
+    dbx = _make_dbx()
+
+    upload_file(dbx, str(local))
+
+    dbx.files_upload.assert_called_once()
+    dbx.files_upload_session_start.assert_not_called()
+
+
+def test_large_file_uses_upload_session(tmp_path, monkeypatch):
+    """CHUNK_SIZE を超えるファイルはセッションで分割アップロードする."""
+    import share.upload as upload_mod
+
+    monkeypatch.setattr(upload_mod, "CHUNK_SIZE", 4)  # 4 バイト/チャンク
+    local = tmp_path / "large.bin"
+    local.write_bytes(b"0123456789")  # 10 バイト -> 4+4+2 の 3 チャンク
+    dbx = MagicMock()
+    dbx.files_upload_session_start.return_value = MagicMock(session_id="sid")
+    dbx.files_upload_session_finish.return_value = MagicMock(path_display="/large.bin")
+
+    progress = []
+    metadata = upload_file(dbx, str(local),
+                           on_progress=lambda sent, total: progress.append((sent, total)))
+
+    # 単発アップロードは使わない
+    dbx.files_upload.assert_not_called()
+    # start(最初の4B) -> append(次の4B) -> finish(残り2B)
+    dbx.files_upload_session_start.assert_called_once_with(b"0123")
+    dbx.files_upload_session_append_v2.assert_called_once()
+    append_args, _ = dbx.files_upload_session_append_v2.call_args
+    assert append_args[0] == b"4567"
+    finish_args, _ = dbx.files_upload_session_finish.call_args
+    assert finish_args[0] == b"89"
+    assert metadata.path_display == "/large.bin"
+    # 進捗は最終的に 10/10 に到達する
+    assert progress[-1] == (10, 10)
+
+
+def test_large_file_session_uses_dropbox_path_and_mode(tmp_path, monkeypatch):
+    """セッション方式でも dropbox_path と overwrite モードが commit に渡る."""
+    import share.upload as upload_mod
+    from dropbox.files import CommitInfo
+
+    monkeypatch.setattr(upload_mod, "CHUNK_SIZE", 4)
+    local = tmp_path / "large.bin"
+    local.write_bytes(b"0123456789")
+    dbx = MagicMock()
+    dbx.files_upload_session_start.return_value = MagicMock(session_id="sid")
+
+    upload_file(dbx, str(local), "/dir/dest.bin", overwrite=True)
+
+    _, finish_kwargs = dbx.files_upload_session_finish.call_args
+    finish_args, _ = dbx.files_upload_session_finish.call_args
+    commit = finish_args[2]
+    assert isinstance(commit, CommitInfo)
+    assert commit.path == "/dir/dest.bin"
+    assert commit.mode == WriteMode("overwrite")
